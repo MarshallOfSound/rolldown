@@ -90,6 +90,8 @@ pub struct RawMinifyOptionsDetailed {
   pub mangle: Option<RawMangleOptions>,
   pub compress: Option<RawCompressOptions>,
   pub remove_whitespace: bool,
+  /// Escape non-ASCII characters in the emitted chunks (`codegen.asciiOnly`).
+  pub ascii_only: bool,
 }
 
 impl RawMinifyOptions {
@@ -120,7 +122,7 @@ impl RawMinifyOptions {
               mangle_properties: None,
               compress: Some(compress),
             },
-            true,
+            MinifyCodegenFlags { remove_whitespace: true, ascii_only: false },
           ))
         } else {
           MinifyOptions::Disabled
@@ -150,7 +152,10 @@ impl RawMinifyOptions {
         });
         MinifyOptions::Enabled((
           oxc::minifier::MinifierOptions { mangle, mangle_properties: None, compress },
-          value.remove_whitespace,
+          MinifyCodegenFlags {
+            remove_whitespace: value.remove_whitespace,
+            ascii_only: value.ascii_only,
+          },
         ))
       }
     }
@@ -164,12 +169,19 @@ impl From<bool> for RawMinifyOptions {
   }
 }
 
+/// Codegen switches that ride along with the minifier options.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MinifyCodegenFlags {
+  pub remove_whitespace: bool,
+  pub ascii_only: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum MinifyOptions {
   Disabled,
   DeadCodeEliminationOnly(oxc::minifier::MinifierOptions),
   /// Setting all values to false in `MinifyOptionsObject` means DCE only.
-  Enabled((oxc::minifier::MinifierOptions, bool)),
+  Enabled((oxc::minifier::MinifierOptions, MinifyCodegenFlags)),
 }
 
 impl MinifyOptions {
@@ -195,6 +207,7 @@ mod tests {
       mangle: Some(RawMangleOptions::default()),
       compress: Some(RawCompressOptions::default()),
       remove_whitespace: true,
+      ascii_only: false,
     })
     .normalize(&options);
 

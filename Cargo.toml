@@ -328,3 +328,9 @@ opt-level = "s"
 # it will strip these information for non-debug files
 debug = "full"
 strip = "none"
+
+# Local patches: `ascii_only` codegen option (oxc_codegen) surfaced through the
+# minifier's N-API options (oxc_minify_napi). Upstream candidates for oxc.
+[patch.crates-io]
+oxc_codegen = { path = "vendor/oxc_codegen" }
+oxc_minify_napi = { path = "vendor/oxc_minify_napi" }

@@ -16,7 +16,7 @@ function e(){}
 * @license Bar v11.0.0
 * MIT License
 */
-const t=`bar`;
+const t="bar";
 /*! Bundle license information: */
-console.log(`hello`);export{t as bar,e as hello};
+console.log("hello");export{t as bar,e as hello};
 ```

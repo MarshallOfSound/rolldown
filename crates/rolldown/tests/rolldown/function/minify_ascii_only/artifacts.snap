@@ -1,0 +1,10 @@
+---
+source: crates/rolldown_testing/src/integration_test.rs
+---
+# Assets
+
+## main.js
+
+```js
+import e from"node:assert";const t=["caf\u00E9","\u65E5\u672C\u8A9E","\uD83D\uDE00","\u2028","a<\/script>b"];let n=1;let r=2;function i(){n++;r++;return n+r}function a(e){let t;({\u00F1ame:t}=e);return t}const o=[/caf\u00E9/,/[\u2013\u2014]/g,/\u2019s/,/\uD83D\uDE00+/u];const s=[`na\u00EFve 1`,`caf\u00E9`,`ab`];const c=String.raw`resume\n`;let l="\uD842\uDFB7";e.strictEqual(t[0],"caf\u00E9");e.strictEqual(t[2].codePointAt(0),128512);e.strictEqual(i(),5);e.strictEqual(a({\u00F1ame:7}),7);e.ok(o[1].test("\u2013")&&!o[1].test("u"));e.ok(o[2].test("\u2019s"));e.ok(o[3].test("\uD83D\uDE00\uD83D\uDE00"));e.strictEqual(s[1],"caf\u00E9");e.strictEqual(s[2],"ab");e.strictEqual(c,"resume\\n");e.strictEqual(l,"\uD842\uDFB7");export{i as bump,a as pick,c as raw,o as regexes,t as strings,s as templates,l as \u{20BB7}\u91CE\u5BB6};
+```

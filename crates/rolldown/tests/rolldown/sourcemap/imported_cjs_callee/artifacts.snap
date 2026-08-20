@@ -65,7 +65,7 @@ var import_client = require_client();
 ### main.js
 
 ```js
-(0,((e,t)=>()=>(t||(e((t={exports:{}}).exports,t),e=null),t.exports))(((e,t)=>{t.exports.createRoot=function(e){return{render(){e.textContent=`rendered`}}}}))().createRoot)(document.getElementById(`root`)).render();
+(0,((e,t)=>()=>(t||(e((t={exports:{}}).exports,t),e=null),t.exports))(((e,t)=>{t.exports.createRoot=function(e){return{render(){e.textContent="rendered"}}}}))().createRoot)(document.getElementById("root")).render();
 //# sourceMappingURL=main.js.map
 ```
 
@@ -87,7 +87,7 @@ var import_client = require_client();
 (2:13) "{\n" --> (0:127) "{"
 (3:6) "element." --> (0:128) "e."
 (3:14) "textContent = " --> (0:130) "textContent="
-(3:28) "'rendered';\n" --> (0:142) "`rendered`"
+(3:28) "'rendered';\n" --> (0:142) "\"rendered\""
 (4:4) "},\n" --> (0:152) "}"
 (5:2) "};\n" --> (0:153) "}"
 (6:0) "};\n" --> (0:154) "}}))("
@@ -98,7 +98,7 @@ var import_client = require_client();
 (2:0) "createRoot(" --> (0:172) "("
 (2:11) "document." --> (0:173) "document."
 (2:20) "getElementById(" --> (0:182) "getElementById("
-(2:35) "'root'" --> (0:197) "`root`"
+(2:35) "'root'" --> (0:197) "\"root\""
 (2:41) ")" --> (0:203) ")"
 (2:42) ")" --> (0:204) ")"
 (2:43) "." --> (0:205) "."

@@ -16,10 +16,12 @@ impl GenerateStage<'_> {
     options: &NormalizedBundlerOptions,
     chunks: &mut IndexInstantiatedChunks,
   ) -> BuildResult<()> {
-    let (compress, minify_option, remove_whitespace) = match &options.minify {
+    let (compress, minify_option, remove_whitespace, ascii_only) = match &options.minify {
       MinifyOptions::Disabled => return Ok(()),
-      MinifyOptions::DeadCodeEliminationOnly(options) => (false, options, false),
-      MinifyOptions::Enabled((options, remove_whitespace)) => (true, options, *remove_whitespace),
+      MinifyOptions::DeadCodeEliminationOnly(options) => (false, options, false, false),
+      MinifyOptions::Enabled((options, flags)) => {
+        (true, options, flags.remove_whitespace, flags.ascii_only)
+      }
     };
     let allocator_pool = AllocatorPool::new(rayon::current_num_threads());
     chunks.par_iter_mut().try_for_each(|chunk| -> anyhow::Result<()> {
@@ -30,6 +32,7 @@ impl GenerateStage<'_> {
         rolldown_common::InstantiationKind::Ecma(_) => {
           let codegen_options = CodegenOptions {
             minify: remove_whitespace,
+            ascii_only,
             comments: CommentOptions {
               normal: !remove_whitespace,
               jsdoc: options.comments.jsdoc && !remove_whitespace,

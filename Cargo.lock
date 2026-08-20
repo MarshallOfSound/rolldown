@@ -587,6 +587,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "endian-type"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1685,8 +1694,6 @@ dependencies = [
 [[package]]
 name = "oxc_codegen"
 version = "0.146.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57b5180ce6f991eacd8c4a85eb28f9fbbff145422dd8ece782f48626957661d0"
 dependencies = [
  "bitflags",
  "cow-utils",
@@ -1853,8 +1860,6 @@ dependencies = [
 [[package]]
 name = "oxc_minify_napi"
 version = "0.146.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6627844c0d96348ac8c15e7181390638736df70fa015f89ffea4672cd3dcbe7b"
 dependencies = [
  "lazy-regex",
  "napi",
@@ -2618,9 +2623,11 @@ dependencies = [
  "async-channel",
  "dashmap",
  "derive_more",
+ "encoding_rs",
  "futures",
  "indexmap",
  "itertools",
+ "libc",
  "mimalloc-safe",
  "napi",
  "napi-build",
@@ -3706,7 +3713,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
