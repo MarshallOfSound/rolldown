@@ -92,6 +92,18 @@ impl GenerateStage<'_> {
       atoms.len(),
     );
 
+    // The static-cycle veto below asks, for every candidate reduction, whether the atom→chunk
+    // graph (atoms grouped by identical dependent-entry bits, edges from `cycle`) would contain
+    // a cycle. Rebuilding that whole graph per candidate is O(atoms × edges) per atom — seconds
+    // on a large app. `IncrementalGroupGraph` keeps the grouping and the group-level edge
+    // multiset up to date as atoms move between groups, so each candidate costs only the moved
+    // atom's incident edges plus one reachability probe from its new group (a move only ADDS
+    // edges incident to the destination group, so any new cycle passes through it). That probe
+    // is exact only while the graph is known acyclic, so if the initial graph already has a
+    // cycle we keep the original whole-graph check.
+    let mut incremental = IncrementalGroupGraph::new(&atoms, &atom_dependencies.cycle);
+    let use_incremental = !incremental.has_any_cycle();
+
     let mut changed = false;
     for atom_idx in 0..atoms.len() {
       let original_dependent_entries = atoms[atom_idx].dependent_entries.clone();
@@ -113,8 +125,23 @@ impl GenerateStage<'_> {
           &dynamic_entry_modules_by_entry,
         )
       };
+      let creates_static_cycle = |atoms: &[ChunkAtom], incremental: &mut IncrementalGroupGraph| {
+        if use_incremental {
+          // Tentatively move the atom to the group of its reduced bits; keep the move only if
+          // it stays acyclic (the caller restores the bits otherwise, matching the graph).
+          incremental.move_atom(atom_idx, &atoms[atom_idx].dependent_entries);
+          if incremental.group_reaches_itself(incremental.group_of(atom_idx)) {
+            incremental.move_atom(atom_idx, &original_dependent_entries);
+            true
+          } else {
+            false
+          }
+        } else {
+          Self::reduced_atom_graph_has_static_cycle(atoms, &atom_dependencies.cycle)
+        }
+      };
       if !matches!(action, ReducedEntriesAction::Avoid)
-        && !Self::reduced_atom_graph_has_static_cycle(&atoms, &atom_dependencies.cycle)
+        && !creates_static_cycle(&atoms, &mut incremental)
       {
         changed = true;
         if let ReducedEntriesAction::ApplyWithNamespaceExtraction {
@@ -826,5 +853,159 @@ impl GenerateStage<'_> {
     }
 
     already_loaded_atoms_by_entry
+  }
+}
+
+
+/// Atoms grouped by identical `dependent_entries` (each group is a chunk-to-be) with the
+/// group-level dependency multigraph maintained incrementally, for the static-cycle veto in
+/// `optimize_dynamic_entry_bits`. Group ids are never reused; a group left empty simply has no
+/// edges.
+struct IncrementalGroupGraph {
+  group_by_bits: FxHashMap<BitSet, usize>,
+  atom_group: Vec<usize>,
+  /// atom → atoms it depends on / atoms depending on it (the `cycle` graph and its reverse).
+  deps: Vec<Vec<usize>>,
+  rdeps: Vec<Vec<usize>>,
+  /// group → (successor group → multiplicity). Self-edges are not stored.
+  out: Vec<FxHashMap<usize, u32>>,
+}
+
+impl IncrementalGroupGraph {
+  fn new(atoms: &[ChunkAtom], atom_dependencies: &[Vec<usize>]) -> Self {
+    let mut group_by_bits: FxHashMap<BitSet, usize> = FxHashMap::default();
+    let mut atom_group = Vec::with_capacity(atoms.len());
+    for atom in atoms {
+      let next = group_by_bits.len();
+      let group = *group_by_bits.entry(atom.dependent_entries.clone()).or_insert(next);
+      atom_group.push(group);
+    }
+    let mut rdeps = vec![Vec::new(); atoms.len()];
+    for (atom_idx, deps) in atom_dependencies.iter().enumerate() {
+      for &dep in deps {
+        rdeps[dep].push(atom_idx);
+      }
+    }
+    let mut graph = Self {
+      out: vec![FxHashMap::default(); group_by_bits.len()],
+      group_by_bits,
+      atom_group,
+      deps: atom_dependencies.to_vec(),
+      rdeps,
+    };
+    for atom_idx in 0..atoms.len() {
+      let from = graph.atom_group[atom_idx];
+      for i in 0..graph.deps[atom_idx].len() {
+        let to = graph.atom_group[graph.deps[atom_idx][i]];
+        graph.add_edge(from, to);
+      }
+    }
+    graph
+  }
+
+  fn group_of(&self, atom_idx: usize) -> usize {
+    self.atom_group[atom_idx]
+  }
+
+  fn add_edge(&mut self, from: usize, to: usize) {
+    if from != to {
+      *self.out[from].entry(to).or_insert(0) += 1;
+    }
+  }
+
+  fn remove_edge(&mut self, from: usize, to: usize) {
+    if from == to {
+      return;
+    }
+    if let Some(count) = self.out[from].get_mut(&to) {
+      *count -= 1;
+      if *count == 0 {
+        self.out[from].remove(&to);
+      }
+    }
+  }
+
+  /// Re-home `atom_idx` in the group for `bits` (creating it if new), moving its incident
+  /// edges with it.
+  fn move_atom(&mut self, atom_idx: usize, bits: &BitSet) {
+    let old = self.atom_group[atom_idx];
+    let new = match self.group_by_bits.get(bits) {
+      Some(&group) => group,
+      None => {
+        let group = self.out.len();
+        self.group_by_bits.insert(bits.clone(), group);
+        self.out.push(FxHashMap::default());
+        group
+      }
+    };
+    if old == new {
+      return;
+    }
+    for i in 0..self.deps[atom_idx].len() {
+      let dep = self.deps[atom_idx][i];
+      // A self-dependency edge moves on both ends.
+      let to = if dep == atom_idx { new } else { self.atom_group[dep] };
+      let old_to = if dep == atom_idx { old } else { to };
+      self.remove_edge(old, old_to);
+      self.add_edge(new, to);
+    }
+    for i in 0..self.rdeps[atom_idx].len() {
+      let pred = self.rdeps[atom_idx][i];
+      if pred == atom_idx {
+        continue; // handled above as a self edge
+      }
+      let from = self.atom_group[pred];
+      self.remove_edge(from, old);
+      self.add_edge(from, new);
+    }
+    self.atom_group[atom_idx] = new;
+  }
+
+  /// Whether `group` lies on a cycle (DFS over its successors looking for itself).
+  fn group_reaches_itself(&self, group: usize) -> bool {
+    let mut seen = vec![false; self.out.len()];
+    let mut stack: Vec<usize> = self.out[group].keys().copied().collect();
+    while let Some(g) = stack.pop() {
+      if g == group {
+        return true;
+      }
+      if std::mem::replace(&mut seen[g], true) {
+        continue;
+      }
+      stack.extend(self.out[g].keys().copied());
+    }
+    false
+  }
+
+  /// Full check, used once up front (same DFS as `chunk_dependency_graph_has_cycle`).
+  fn has_any_cycle(&self) -> bool {
+    let mut state = vec![0_u8; self.out.len()];
+    for start in 0..self.out.len() {
+      if state[start] != 0 {
+        continue;
+      }
+      let mut stack = vec![(start, false)];
+      while let Some((g, exiting)) = stack.pop() {
+        if exiting {
+          state[g] = 2;
+          continue;
+        }
+        match state[g] {
+          1 => return true,
+          2 => continue,
+          _ => {}
+        }
+        state[g] = 1;
+        stack.push((g, true));
+        for &succ in self.out[g].keys() {
+          match state[succ] {
+            1 => return true,
+            0 => stack.push((succ, false)),
+            _ => {}
+          }
+        }
+      }
+    }
+    false
   }
 }
