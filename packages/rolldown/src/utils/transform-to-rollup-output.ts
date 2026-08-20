@@ -40,13 +40,21 @@ function transformToMutableRollupOutputChunk(
   bindingChunk: BindingOutputChunk,
   changed: ChangedOutputs,
 ): OutputChunk {
+  // Every field is a getter: the bundle is rebuilt for each plugin's `generateBundle` /
+  // `writeBundle` call, and each eager field is one binding call per chunk per hook — on a
+  // build with thousands of chunks and dozens of output hooks that alone is ~10^6 crossings.
+  // The Proxy below caches whatever a plugin actually reads.
   const chunk = {
     type: 'chunk',
     get code() {
       return bindingChunk.getCode();
     },
-    fileName: bindingChunk.getFileName(),
-    name: bindingChunk.getName(),
+    get fileName() {
+      return bindingChunk.getFileName();
+    },
+    get name() {
+      return bindingChunk.getName();
+    },
     get modules() {
       return transformChunkModules(bindingChunk.getModules());
     },
@@ -56,10 +64,18 @@ function transformToMutableRollupOutputChunk(
     get dynamicImports() {
       return bindingChunk.getDynamicImports();
     },
-    exports: bindingChunk.getExports(),
-    isEntry: bindingChunk.getIsEntry(),
-    facadeModuleId: bindingChunk.getFacadeModuleId() || null,
-    isDynamicEntry: bindingChunk.getIsDynamicEntry(),
+    get exports() {
+      return bindingChunk.getExports();
+    },
+    get isEntry() {
+      return bindingChunk.getIsEntry();
+    },
+    get facadeModuleId() {
+      return bindingChunk.getFacadeModuleId() || null;
+    },
+    get isDynamicEntry() {
+      return bindingChunk.getIsDynamicEntry();
+    },
     get moduleIds() {
       return bindingChunk.getModuleIds();
     },
@@ -67,8 +83,12 @@ function transformToMutableRollupOutputChunk(
       const map = bindingChunk.getMap();
       return map ? transformToRollupSourceMap(map) : null;
     },
-    sourcemapFileName: bindingChunk.getSourcemapFileName() || null,
-    preliminaryFileName: bindingChunk.getPreliminaryFileName(),
+    get sourcemapFileName() {
+      return bindingChunk.getSourcemapFileName() || null;
+    },
+    get preliminaryFileName() {
+      return bindingChunk.getPreliminaryFileName();
+    },
   } as OutputChunk;
   const cache: Record<string | symbol, any> = {};
   return new Proxy(chunk, {
@@ -100,16 +120,27 @@ function transformToMutableRollupOutputAsset(
   bindingAsset: BindingOutputAsset,
   changed: ChangedOutputs,
 ): OutputAsset {
+  // Getters throughout, for the same reason as the chunk fields above.
   const asset = {
     type: 'asset',
-    fileName: bindingAsset.getFileName(),
-    originalFileName: bindingAsset.getOriginalFileName() || null,
-    originalFileNames: bindingAsset.getOriginalFileNames(),
+    get fileName() {
+      return bindingAsset.getFileName();
+    },
+    get originalFileName() {
+      return bindingAsset.getOriginalFileName() || null;
+    },
+    get originalFileNames() {
+      return bindingAsset.getOriginalFileNames();
+    },
     get source(): AssetSource {
       return transformAssetSource(bindingAsset.getSource());
     },
-    name: bindingAsset.getName() ?? undefined,
-    names: bindingAsset.getNames(),
+    get name() {
+      return bindingAsset.getName() ?? undefined;
+    },
+    get names() {
+      return bindingAsset.getNames();
+    },
   } as OutputAsset;
   const cache: Record<string | symbol, any> = {};
   return new Proxy(asset, {
