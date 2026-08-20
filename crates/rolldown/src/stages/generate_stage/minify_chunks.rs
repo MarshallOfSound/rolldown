@@ -4,7 +4,9 @@ use rolldown_common::{MinifyOptions, NormalizedBundlerOptions};
 use rolldown_ecmascript::EcmaCompiler;
 use rolldown_error::BuildResult;
 use rolldown_sourcemap::collapse_sourcemaps;
-use rolldown_utils::rayon::{IntoParallelRefMutIterator, ParallelIterator};
+#[cfg(not(target_family = "wasm"))]
+use rolldown_utils::rayon::IndexedParallelIterator;
+use rolldown_utils::rayon::{IntoParallelIterator, ParallelIterator};
 
 use crate::type_alias::IndexInstantiatedChunks;
 
@@ -24,7 +26,17 @@ impl GenerateStage<'_> {
       }
     };
     let allocator_pool = AllocatorPool::new(rayon::current_num_threads());
-    chunks.par_iter_mut().try_for_each(|chunk| -> anyhow::Result<()> {
+    // Largest chunks first, one per task: minification time is roughly linear in chunk size
+    // and a multi-megabyte vendor chunk takes seconds, so letting it start last (index order,
+    // coarse splits) makes it the tail of the whole stage. Order does not affect output.
+    let mut by_size = chunks.iter_mut().collect::<Vec<_>>();
+    by_size.sort_by_key(|chunk| std::cmp::Reverse(chunk.content.as_bytes().len()));
+    let chunks_largest_first = by_size.into_par_iter();
+    // One chunk per rayon task, so the sorted order is the start order (the wasm shim's
+    // iterator is sequential and has no splitting to control).
+    #[cfg(not(target_family = "wasm"))]
+    let chunks_largest_first = chunks_largest_first.with_max_len(1);
+    chunks_largest_first.try_for_each(|chunk| -> anyhow::Result<()> {
       if test_d_ts_pattern(chunk.preliminary_filename.as_str()) {
         return Ok(());
       }
