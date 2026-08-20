@@ -20,6 +20,20 @@ impl BindingRenderedModule {
     self.inner.code()
   }
 
+  /// `code.length` as JS would compute it (UTF-16 code units), without materializing and
+  /// copying the joined module code into a JS string just to read its length.
+  #[napi(getter)]
+  pub fn rendered_length(&self) -> u32 {
+    self.inner.code().map_or(0, |code| {
+      let len = if code.is_ascii() {
+        code.len()
+      } else {
+        code.chars().map(char::len_utf16).sum::<usize>()
+      };
+      u32::try_from(len).unwrap_or(u32::MAX)
+    })
+  }
+
   #[napi(getter)]
   pub fn rendered_exports(&self) -> Vec<&str> {
     self.inner.rendered_exports.iter().map(AsRef::as_ref).collect()
