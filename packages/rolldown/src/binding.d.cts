@@ -23,6 +23,14 @@ export interface CodegenOptions {
    * @default "none" (when minifying)
    */
 legalComments?: 'none' | 'inline' | 'eof' | 'external' | { linked: string }
+/**
+ * Escape non-ASCII characters in strings, untagged template literals, regular
+ * expressions and identifiers so the output is 7-bit clean (terser's `ascii_only`,
+ * esbuild's `charset: 'ascii'`).
+ *
+ * @default false
+ */
+asciiOnly?: boolean
 }
 
 export interface CompressOptions {
@@ -1730,6 +1738,7 @@ export declare class BindingModuleInfo {
   exports: Array<string>
   isEntry: boolean
   inputFormat: 'es' | 'cjs' | 'unknown'
+  hasTopLevelAwait: boolean
   get code(): string | null
 }
 
@@ -1835,6 +1844,11 @@ export declare class BindingRenderedChunkMeta {
 
 export declare class BindingRenderedModule {
   get code(): string | null
+  /**
+   * `code.length` as JS would compute it (UTF-16 code units), without materializing and
+   * copying the joined module code into a JS string just to read its length.
+   */
+  get renderedLength(): number
   get renderedExports(): Array<string>
 }
 

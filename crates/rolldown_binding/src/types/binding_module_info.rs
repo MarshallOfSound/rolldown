@@ -22,6 +22,7 @@ pub struct BindingModuleInfo {
   pub is_entry: bool,
   #[napi(ts_type = "'es' | 'cjs' | 'unknown'")]
   pub input_format: String,
+  pub has_top_level_await: bool,
 }
 
 #[napi]
@@ -55,6 +56,7 @@ impl BindingModuleInfo {
         .map(|id| BindingSharedString::from(id.as_arc_str().clone()))
         .collect(),
       is_entry: inner.is_entry,
+      has_top_level_await: inner.has_top_level_await,
       exports: inner.exports.iter().map(ToString::to_string).collect(),
       input_format: input_format.to_string(),
       inner,

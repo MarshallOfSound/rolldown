@@ -113,6 +113,7 @@ impl NormalModule {
         exports
       },
       input_format: self.ecma_view.exports_kind,
+      has_top_level_await: self.ecma_view.ast_usage.contains(crate::EcmaModuleAstUsage::TopLevelAwait),
     }
   }
 

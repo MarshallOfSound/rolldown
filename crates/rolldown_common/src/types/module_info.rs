@@ -15,4 +15,7 @@ pub struct ModuleInfo {
   pub dynamically_imported_ids: FxIndexSet<ModuleId>,
   pub exports: Vec<CompactStr>,
   pub input_format: ExportsKind,
+  /// The module uses `await` (or `for await` / `await using`) at the top level. Only known once
+  /// the module is parsed; `false` for external modules and before parsing.
+  pub has_top_level_await: bool,
 }

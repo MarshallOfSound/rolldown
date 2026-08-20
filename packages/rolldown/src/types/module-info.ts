@@ -50,4 +50,11 @@ export interface ModuleInfo extends ModuleOptions {
    * @experimental
    */
   inputFormat: 'es' | 'cjs' | 'unknown';
+  /**
+   * Whether the module uses `await` (including `for await` and `await using`) at the top
+   * level. Known once the module has been parsed; `false` for external modules.
+   *
+   * @experimental
+   */
+  hasTopLevelAwait: boolean;
 }

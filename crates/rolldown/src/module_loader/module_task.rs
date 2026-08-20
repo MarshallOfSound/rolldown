@@ -103,6 +103,7 @@ impl<Fs: FileSystem + Clone + 'static> ModuleTask<Fs> {
         dynamically_imported_ids: FxIndexSet::default(),
         exports: vec![],
         input_format: ExportsKind::None,
+        has_top_level_await: false,
       }),
     );
 
