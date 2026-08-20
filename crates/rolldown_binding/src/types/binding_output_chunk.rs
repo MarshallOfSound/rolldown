@@ -8,6 +8,7 @@ use super::{
   binding_rendered_chunk::BindingModules, binding_rendered_module::BindingRenderedModule,
   binding_sourcemap::BindingSourcemap, external_memory_status::ExternalMemoryStatus,
 };
+use crate::options::plugin::types::binding_shared_string::BindingSharedString;
 
 #[napi]
 pub struct BindingOutputChunk {
@@ -103,9 +104,13 @@ impl BindingOutputChunk {
   }
 
   // OutputChunk
-  #[napi]
-  pub fn get_code(&self) -> napi::Result<&str> {
-    Ok(&self.try_get_inner()?.code)
+  #[napi(ts_return_type = "string")]
+  pub fn get_code(&self) -> napi::Result<BindingSharedString> {
+    // One Rust-side copy of the code into its own allocation, which the JS string then
+    // borrows (see BindingSharedString's ToNapiValue): no UTF-8 decode into the V8 heap, and
+    // the external string pins only these bytes — not the chunk's sourcemap and module table,
+    // which `freeExternalMemory()` must stay able to release.
+    Ok(BindingSharedString::from(Arc::new(self.try_get_inner()?.code.clone())))
   }
 
   #[napi]

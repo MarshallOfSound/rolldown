@@ -74,6 +74,11 @@ sugar_path = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 
+encoding_rs = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(all(not(target_os = "linux"), not(target_os = "freebsd"), not(target_family = "wasm")))'.dependencies]
 mimalloc-safe = { workspace = true, features = ["skip_collect_on_exit", "v3"] }
 rolldown_tracking_allocator = { workspace = true, optional = true }
