@@ -1,0 +1,268 @@
+name: Fork release (@marshallofsound/rolldown)
+
+# Builds the native binding for the platforms this fork supports, builds the JS
+# package, and publishes `@marshallofsound/rolldown` plus
+# `@marshallofsound/rolldown-binding-<triple>` to npm. Manual trigger only.
+# Publishing authenticates with npm trusted publishing (GitHub OIDC): each of
+# the six packages has this repository + `fork-release.yml` registered as a
+# trusted publisher, so no token secret is involved.
+#
+# The repository keeps upstream's package names; scripts/fork/prepare-release.mjs
+# renames at release time (see FORK.md).
+
+permissions: {}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, e.g. 1.2.5-mos.2 (must be <upstream version>-<suffix>)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish to npm (unchecked = build everything and dry-run the publish)'
+        type: boolean
+        default: false
+      npm_tag:
+        description: 'npm dist-tag'
+        type: string
+        default: latest
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast check, before anything is built or published, that npm accepts this
+  # workflow run as the trusted publisher of every package the release will
+  # publish: `npm publish --dry-run` on a stub package performs the real OIDC
+  # token exchange and logs its outcome (verbose level) without publishing.
+  oidc-preflight:
+    name: npm trusted-publishing preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+
+      - uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        with:
+          version: '0.2.1'
+          cache: true
+
+      - name: Exchange an OIDC token for every package
+        env:
+          FORK_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          npm install -g npm@^11.10.0 >/dev/null
+          echo "npm $(npm --version)"
+          failed=0
+          for name in $(node scripts/fork/prepare-release.mjs --print-packages); do
+            dir=$(mktemp -d)
+            printf '{ "name": "%s", "version": "%s", "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" } }\n' "$name" "$FORK_VERSION" > "$dir/package.json"
+            echo "module.exports = 0;" > "$dir/index.js"
+            log=$( cd "$dir" && npm publish --dry-run --tag preflight --loglevel verbose 2>&1 || true )
+            oidc=$(printf '%s\n' "$log" | grep -E 'npm (verb|verbose) oidc' || true)
+            if printf '%s\n' "$oidc" | grep -q 'Successfully retrieved and set token'; then
+              echo "✔ $name"
+            else
+              failed=1
+              echo "✖ $name — npm did not issue a publish token via OIDC for this package:"
+              printf '%s\n' "${oidc:-  (no oidc log lines; is id-token: write granted?)}" | sed 's/^/    /'
+              printf '%s\n' "$log" | grep -E 'npm (warn|error)|E40[134]|ENEEDAUTH' | sed 's/^/    /' | head -5
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::Configure this repository + fork-release.yml as a trusted publisher for the packages marked ✖ (npmjs.com → package → Settings → Trusted publishing), then re-run."
+            exit 1
+          fi
+
+  build-binding:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            build: vp run ci:build-release-binding --target x86_64-apple-darwin
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            build: vp run ci:build-release-binding --target aarch64-apple-darwin
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            build: vp run ci:build-release-binding --target x86_64-pc-windows-msvc
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            build: vp run ci:build-release-binding --target x86_64-unknown-linux-gnu --use-napi-cross
+
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            build: vp run ci:build-release-binding --use-napi-cross --target aarch64-unknown-linux-gnu
+
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+
+      - name: Setup Rust
+        uses: oxc-project/setup-rust@3d6fb132fbe7cdcb66bf8ec193911c2945369d12 # v1.0.17
+        with:
+          restore-cache: false
+          save-cache: false
+
+      - name: Rustup Adds Target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        with:
+          version: '0.2.1'
+          cache: true
+
+      # Only the .node file leaves this job, so the package name does not matter
+      # here; the loader that requires the fork's binding packages is generated
+      # in build-node-package.
+      - name: Build Binding
+        run: ${{ matrix.build }}
+        shell: bash
+        env:
+          TARGET_CC: clang # for mimalloc
+
+      - name: Upload Binding Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: bindings-${{ matrix.target }}
+          path: packages/rolldown/src/rolldown-binding.*.node
+
+  build-node-package:
+    name: Build Node Package
+    runs-on: ubuntu-latest
+    env:
+      RELEASING: 'true'
+    steps:
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+
+      - name: Setup Rust
+        uses: oxc-project/setup-rust@3d6fb132fbe7cdcb66bf8ec193911c2945369d12 # v1.0.17
+        with:
+          restore-cache: false
+          save-cache: false
+
+      - uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        with:
+          version: '0.2.1'
+          cache: true
+
+      # Point napi at the fork's binding package name BEFORE the (debug) binding
+      # build below: that build regenerates src/binding.cjs, whose requires of
+      # `<packageName>-<triple>` are bundled into dist. Name/version stay
+      # upstream's here so workspace filters keep working.
+      - name: Prepare fork package (binding name)
+        run: node scripts/fork/prepare-release.mjs --binding-only
+
+      - name: Build Node binding
+        # Only used to generate the loader/types for the node package; not published.
+        run: vp run --filter rolldown build-binding
+
+      - name: Build Node Package
+        run: vp run --filter rolldown build-node
+
+      - name: Assert loader targets the fork bindings
+        run: |
+          grep -q '@marshallofsound/rolldown-binding-' packages/rolldown/dist/shared/binding-*.mjs
+          ! grep -q "require('@rolldown/binding-" packages/rolldown/dist/shared/binding-*.mjs
+
+      - name: Upload Node Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: node-artifact
+          path: |
+            packages/rolldown/dist/**
+
+  publish:
+    needs: [oidc-preflight, build-binding, build-node-package]
+    name: Publish npm packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC) + provenance
+    steps:
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+
+      - uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        with:
+          version: '0.2.1'
+          cache: true
+
+      - name: Git Reset Hard
+        run: git reset --hard # pnpm install may reformat package.json
+
+      - name: Prepare fork package (name, version, bindings)
+        run: node scripts/fork/prepare-release.mjs --version "$FORK_VERSION"
+        env:
+          FORK_VERSION: ${{ inputs.version }}
+
+      - name: Download Binding Artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: packages/rolldown/artifacts
+          pattern: bindings-*
+
+      # `vp` filters by workspace name, which prepare-release just changed.
+      - name: Create npm dirs
+        run: vp exec --filter @marshallofsound/rolldown napi create-npm-dirs
+
+      - name: Move Binding Artifacts
+        run: vp run --filter @marshallofsound/rolldown artifacts
+
+      - name: List Bindings
+        run: ls -R ./packages/rolldown/npm
+        shell: bash
+
+      - name: Download Node Artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: packages/rolldown/dist
+          name: node-artifact
+
+      - name: Copy Licenses
+        run: |
+          cp LICENSE THIRD-PARTY-LICENSE FORK.md packages/rolldown/
+          for d in packages/rolldown/npm/*/; do cp LICENSE "$d"; done
+
+      - name: Publish (dry run)
+        # NAPI_DRY_RUN makes rolldown's prepublishOnly hook pass --dry-run through
+        # to `napi pre-publish`, which otherwise publishes the binding packages
+        # for real even during a dry run of the main package.
+        working-directory: packages/rolldown
+        run: vp pm publish --access public --tag "$NPM_TAG" --dry-run --no-git-checks
+        env:
+          NPM_TAG: ${{ inputs.npm_tag }}
+          NAPI_DRY_RUN: '1'
+
+      # npm >= 11.5.1 exchanges the job's OIDC token for a short-lived publish
+      # token per package and attaches provenance automatically. The binding
+      # packages are published by rolldown's prepublishOnly hook
+      # (`napi pre-publish`, which shells out to `npm publish` in each npm/<dir>),
+      # the main package by pnpm, which delegates to the same npm CLI.
+      - name: Publish
+        if: ${{ inputs.publish }}
+        working-directory: packages/rolldown
+        env:
+          NPM_TAG: ${{ inputs.npm_tag }}
+          # Read by the bare `npm publish` napi runs for each binding package.
+          NPM_CONFIG_PROVENANCE: 'true'
+          NPM_CONFIG_ACCESS: public
+          NPM_CONFIG_TAG: ${{ inputs.npm_tag }}
+        run: |
+          # npm >= 11.5.1 for trusted publishing; 11.x runs on the runner's Node.
+          npm install -g npm@^11.10.0
+          npm --version
+          vp pm publish --access public --tag "$NPM_TAG" --no-git-checks --provenance
