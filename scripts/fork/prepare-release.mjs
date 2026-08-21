@@ -7,7 +7,7 @@
 // release CI (and can be run locally to produce the same tarballs).
 //
 // Usage:
-//   node scripts/fork/prepare-release.mjs --version 1.2.5-mos.2 [--binding-only]
+//   node scripts/fork/prepare-release.mjs --version 1.2.5-mos.3 [--binding-only]
 //
 //   --binding-only  only set napi.packageName / napi.targets (enough for the
 //                   jobs that merely build: the generated loader must require
@@ -37,6 +37,7 @@ const FORK = {
     'aarch64-apple-darwin',
     'x86_64-apple-darwin',
     'x86_64-pc-windows-msvc',
+    'aarch64-pc-windows-msvc',
   ],
 };
 

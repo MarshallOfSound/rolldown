@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish, e.g. 1.2.5-mos.2 (must be <upstream version>-<suffix>)'
+        description: 'Version to publish, e.g. 1.2.5-mos.3 (must be <upstream version>-<suffix>)'
         required: true
         type: string
       publish:
@@ -96,6 +96,10 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             build: vp run ci:build-release-binding --target x86_64-pc-windows-msvc
+
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            build: vp run ci:build-release-binding --target aarch64-pc-windows-msvc
 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu

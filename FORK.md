@@ -11,10 +11,10 @@ Published as:
   `dist/` layout and subpath exports),
 - `@marshallofsound/rolldown-binding-<triple>` — the native binding, for
   `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
-  `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-pc-windows-msvc`
-  only.
+  `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` and
+  `aarch64-pc-windows-msvc` only.
 
-Versions are `<upstream version>-mos.<n>`, e.g. `1.2.5-mos.2`.
+Versions are `<upstream version>-mos.<n>`, e.g. `1.2.5-mos.3`.
 
 ## Using it under Vite
 
@@ -24,7 +24,7 @@ Vite 8 depends on `rolldown` by name, so alias it (yarn shown; pnpm
 ```jsonc
 // package.json
 "resolutions": {
-  "rolldown": "npm:@marshallofsound/rolldown@1.2.5-mos.2"
+  "rolldown": "npm:@marshallofsound/rolldown@1.2.5-mos.3"
 }
 ```
 
