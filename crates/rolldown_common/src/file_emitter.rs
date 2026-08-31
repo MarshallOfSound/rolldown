@@ -218,7 +218,14 @@ impl FileEmitter {
           return Ok(reference_id);
         }
         Entry::Vacant(entry) => {
-          let reference_id = self.assign_reference_id(None);
+          // Derive the reference id from the content hash rather than the
+          // emission counter: the counter's value depends on the order modules
+          // are processed across threads, which made reference ids — and
+          // anything hashed over pre-render placeholders like Vite's
+          // `__VITE_ASSET__<id>__` — nondeterministic across otherwise
+          // identical builds. The dedupe map is keyed on this same hash, so a
+          // content-derived id is unique per emitted asset by construction.
+          let reference_id = self.assign_reference_id(Some(hash.clone()));
           // Insert into self.files while the VacantEntry holds its shard lock,
           // so any concurrent Occupied branch always finds the files entry.
           self.insert_new_file(
@@ -511,6 +518,43 @@ mod tests {
     for name in ["a", "index.js", "assets/deeply/nested/asset.name.txt", ""] {
       assert_eq!(emitter.assign_reference_id(Some(ArcStr::from(name))).len(), 22, "name={name:?}");
     }
+  }
+
+  /// Reference ids for assets emitted without an explicit file name must depend only on
+  /// content, never on emission order: the ids leak into pre-render code (e.g. Vite's
+  /// `__VITE_ASSET__<id>__` placeholders), and order-dependent ids make otherwise
+  /// identical builds nondeterministic for anything that hashes that code (source maps,
+  /// Sentry debug ids, ...).
+  #[test]
+  fn asset_reference_ids_are_independent_of_emission_order() {
+    let emit = |emitter: &FileEmitter, name: &str, source: &str| {
+      emitter
+        .emit_file(
+          EmittedAsset {
+            name: Some(name.to_string()),
+            source: StrOrBytes::from(source.to_string()),
+            ..Default::default()
+          },
+          Some(FilenameTemplate::new(
+            "assets/[name]-[hash][extname]".to_string(),
+            "output.assetFileNames",
+          )),
+          Some(ArcStr::from(name)),
+        )
+        .unwrap()
+    };
+
+    let forward = FileEmitter::new(Arc::new(NormalizedBundlerOptions::default()));
+    let a1 = emit(&forward, "a.png", "aaaa");
+    let b1 = emit(&forward, "b.png", "bbbb");
+
+    let reverse = FileEmitter::new(Arc::new(NormalizedBundlerOptions::default()));
+    let b2 = emit(&reverse, "b.png", "bbbb");
+    let a2 = emit(&reverse, "a.png", "aaaa");
+
+    assert_eq!(a1, a2, "reference id for the same content must not depend on emission order");
+    assert_eq!(b1, b2, "reference id for the same content must not depend on emission order");
+    assert_ne!(a1, b1, "different content must produce different reference ids");
   }
 
   /// The emitter is reused across dev-mode rebuilds. An asset re-emitted with changed
